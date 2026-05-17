@@ -14,6 +14,7 @@ import socket
 from functools import lru_cache
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+import os
 
 # ==================== RATE LIMITING & API KEYS ====================
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -41,28 +42,51 @@ app.add_middleware(
 # Thread pool for WHOIS lookups
 executor = ThreadPoolExecutor(max_workers=2)
 
-# ==================== API KEY MANAGEMENT ====================
-# In production, store these in a database
-# For now, use a simple dict (upgrade to Redis later)
-API_KEYS = {
-    "free_demo_key": {"plan": "free", "rate_limit": "10/day", "requests_used": 0, "created_at": datetime.now().isoformat()},
-    "pro_key_123": {"plan": "pro", "rate_limit": "1000/day", "requests_used": 0, "created_at": datetime.now().isoformat()},
-    "enterprise_key_456": {"plan": "enterprise", "rate_limit": "10000/day", "requests_used": 0, "created_at": datetime.now().isoformat()},
-}
+# ==================== API KEY MANAGEMENT (ENVIRONMENT VARIABLES) ====================
+# Load API keys from environment variables with fallbacks
+API_KEYS = {}
 
-# Track daily usage (in production, use Redis or database)
-daily_usage = {}
+# Free tier keys (10 requests/day)
+free_keys = os.getenv("API_KEYS_FREE", "free_demo_key")
+for key in free_keys.split(","):
+    API_KEYS[key.strip()] = {"plan": "free", "rate_limit": "10/day", "requests_used": 0}
 
+# Pro tier keys (1000 requests/day)
+pro_keys = os.getenv("API_KEYS_PRO", "pro_key_123")
+for key in pro_keys.split(","):
+    API_KEYS[key.strip()] = {"plan": "pro", "rate_limit": "1000/day", "requests_used": 0}
+
+# Business tier keys (10000 requests/day)
+business_keys = os.getenv("API_KEYS_BUSINESS", "")
+for key in business_keys.split(","):
+    if key.strip():
+        API_KEYS[key.strip()] = {"plan": "business", "rate_limit": "10000/day", "requests_used": 0}
+
+# Enterprise tier keys (unlimited)
+enterprise_keys = os.getenv("API_KEYS_ENTERPRISE", "")
+for key in enterprise_keys.split(","):
+    if key.strip():
+        API_KEYS[key.strip()] = {"plan": "enterprise", "rate_limit": "unlimited", "requests_used": 0}
+
+# Function to generate new API key (for demo/quick start)
 def generate_api_key(plan: str = "free") -> dict:
-    """Generate a new API key for a user"""
     api_key = secrets.token_urlsafe(32)
+    limit_map = {
+        "free": "10/day",
+        "pro": "1000/day",
+        "business": "10000/day",
+        "enterprise": "unlimited"
+    }
     API_KEYS[api_key] = {
         "plan": plan,
-        "rate_limit": "1000/day" if plan == "pro" else "5000/day" if plan == "business" else "10000/day" if plan == "enterprise" else "10/day",
+        "rate_limit": limit_map.get(plan, "10/day"),
         "requests_used": 0,
         "created_at": datetime.now().isoformat()
     }
     return {"api_key": api_key, "plan": plan, "message": f"API key created for {plan} plan"}
+
+# Track daily usage (in production, use Redis or database)
+daily_usage = {}
 
 def check_api_rate_limit(api_key: str) -> tuple:
     """Check if API key has exceeded its rate limit"""
@@ -83,7 +107,7 @@ def check_api_rate_limit(api_key: str) -> tuple:
         "free": 10,
         "pro": 1000,
         "business": 10000,
-        "enterprise": 100000
+        "enterprise": 1000000  # Effectively unlimited
     }
     daily_limit = limit_map.get(key_info["plan"], 10)
     
@@ -97,7 +121,7 @@ def check_api_rate_limit(api_key: str) -> tuple:
     return True, {"remaining": daily_limit - daily_usage[api_key][today], "limit": daily_limit}
 
 # ==================== RATE LIMITING SETUP ====================
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -394,11 +418,15 @@ async def get_whois_with_timeout(domain: str, timeout_seconds: int = 8):
 # ==================== API KEY VALIDATION DEPENDENCY ====================
 async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify API key and check rate limits"""
+    # Allow requests without API key for testing (but show warning)
+    if not credentials:
+        return {"api_key": "no_key", "plan": "free", "remaining": 0, "warning": "No API key provided. Please use valid API key."}
+    
     api_key = credentials.credentials
     
     # Check if API key exists
     if api_key not in API_KEYS:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise HTTPException(status_code=401, detail="Invalid API key. Get a free key at /generate-api-key")
     
     # Check rate limit
     is_valid, result = check_api_rate_limit(api_key)
@@ -409,7 +437,7 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(sec
     today = datetime.now().strftime("%Y-%m-%d")
     remaining = None
     if api_key in daily_usage and today in daily_usage[api_key]:
-        limit_map = {"free": 10, "pro": 1000, "business": 10000, "enterprise": 100000}
+        limit_map = {"free": 10, "pro": 1000, "business": 10000, "enterprise": 1000000}
         daily_limit = limit_map.get(API_KEYS[api_key]["plan"], 10)
         remaining = daily_limit - daily_usage[api_key][today]
     
@@ -460,7 +488,7 @@ async def upgrade_plan(api_key: str, plan: str):
     # In production, verify payment here
     # For demo, just upgrade
     API_KEYS[api_key]["plan"] = plan
-    limit_map = {"pro": "1000/day", "business": "10000/day", "enterprise": "100000/day"}
+    limit_map = {"pro": "1000/day", "business": "10000/day", "enterprise": "1000000/day"}
     API_KEYS[api_key]["rate_limit"] = limit_map.get(plan, "1000/day")
     
     return {
@@ -503,7 +531,7 @@ async def predict_single(
                 timestamp=datetime.now().isoformat(),
                 request_id=str(uuid.uuid4())[:8],
                 remaining_requests=api_key_info.get("remaining"),
-                whois=await get_whois_with_timeout(domain, timeout_seconds=5) if request.include_whois and api_key_info["plan"] != "free" else None
+                whois=await get_whois_with_timeout(domain, timeout_seconds=5) if request.include_whois and api_key_info.get("plan") != "free" else None
             )
         
         # ==================== AI PREDICTION WITH SAFETY NET ====================
@@ -519,7 +547,7 @@ async def predict_single(
         
         # Get WHOIS if requested (only for paid plans)
         whois_info = None
-        if request.include_whois and api_key_info["plan"] != "free":
+        if request.include_whois and api_key_info.get("plan") != "free":
             try:
                 whois_info = await get_whois_with_timeout(domain, timeout_seconds=8)
                 
@@ -587,7 +615,7 @@ async def predict_batch(
             threat_score = max(0, min(100, threat_score))
             
             whois_info = None
-            if request.include_whois and api_key_info["plan"] != "free":
+            if request.include_whois and api_key_info.get("plan") != "free":
                 whois_info = await get_whois_with_timeout(domain, timeout_seconds=5)
             
             results.append(URLResponse(
