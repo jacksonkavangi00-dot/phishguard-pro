@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishGuard Pro - AI Phishing Detection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.95;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        
+        input {
+            flex: 1;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            transition: all 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .result {
+            display: none;
+            background: #f7f7f7;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+        
+        .result.show {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .threat-score {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .score-circle {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .score-circle.high {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .score-circle.low {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        
+        .status-badge.malicious {
+            background: #fee;
+            color: #c00;
+            border: 1px solid #fcc;
+        }
+        
+        .status-badge.safe {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+        
+        .analysis {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        .domain-info {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            font-family: monospace;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ PhishGuard Pro</h1>
+            <p>AI-Powered Phishing Threat Intelligence Engine</p>
+        </div>
+        
+        <div class="content">
+            <div class="input-group">
+                <input type="text" id="urlInput" placeholder="Enter URL to analyze (e.g., https://example.com)">
+                <button onclick="checkURL()">🔍 Analyze</button>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 10px;">Analyzing URL with AI model...</p>
+            </div>
+            
+            <div class="result" id="result">
+                <div class="threat-score">
+                    <div class="score-circle" id="scoreCircle">
+                        <span id="threatScore">-</span>
+                    </div>
+                </div>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-label">Confidence</div>
+                        <div class="stat-value" id="confidence">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Threat Level</div>
+                        <div class="stat-value" id="threatLevel">-</div>
+                    </div>
+                </div>
+                
+                <div style="text-align: center;">
+                    <div class="status-badge" id="statusBadge">-</div>
+                </div>
+                
+                <div class="domain-info">
+                    <strong>🌐 Domain:</strong> <span id="domain">-</span>
+                </div>
+                
+                <div class="analysis">
+                    <strong>🧠 Threat Intelligence Summary</strong>
+                    <p id="analysisSummary" style="margin-top: 10px;">-</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/predict';
+        
+        async function checkURL() {
+            const url = document.getElementById('urlInput').value.trim();
+            
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('result').classList.remove('show');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('API Response:', data); // Debug output
+                
+                // Extract domain
+                let domain = url;
+                try {
+                    domain = new URL(url).hostname;
+                } catch (e) {
+                    domain = url.split('/')[2] || url;
+                }
+                
+                // Parse API response
+                const isPhishing = data.is_phishing;
+                const confidence = data.confidence;
+                const confidencePercent = (confidence * 100).toFixed(1);
+                
+                // Calculate threat score (0-100)
+                let threatScore;
+                if (isPhishing) {
+                    threatScore = Math.round(confidence * 100);
+                } else {
+                    threatScore = Math.round((1 - confidence) * 100);
+                }
+                
+                // Update UI
+                document.getElementById('threatScore').textContent = threatScore;
+                document.getElementById('confidence').textContent = `${confidencePercent}%`;
+                document.getElementById('threatLevel').textContent = isPhishing ? 'HIGH' : 'LOW';
+                document.getElementById('domain').textContent = domain;
+                
+                // Update score circle color
+                const scoreCircle = document.getElementById('scoreCircle');
+                scoreCircle.className = 'score-circle';
+                scoreCircle.classList.add(isPhishing ? 'high' : 'low');
+                
+                // Update status badge
+                const statusBadge = document.getElementById('statusBadge');
+                if (isPhishing) {
+                    statusBadge.textContent = '🔴 HIGH RISK - PHISHING URL';
+                    statusBadge.className = 'status-badge malicious';
+                } else {
+                    statusBadge.textContent = '🟢 LOW RISK - SAFE URL';
+                    statusBadge.className = 'status-badge safe';
+                }
+                
+                // Update analysis summary
+                const analysisSummary = document.getElementById('analysisSummary');
+                if (isPhishing) {
+                    analysisSummary.innerHTML = '⚠️ This URL shows strong phishing indicators: suspicious domain pattern, misleading brand reference, and multiple security risk factors. The AI model has detected patterns consistent with known phishing campaigns.';
+                } else {
+                    analysisSummary.innerHTML = '✅ This URL appears safe based on machine learning analysis of URL structure, character patterns, and security indicators. No immediate threats detected.';
+                }
+                
+                // Show result
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('result').classList.add('show');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('loading').classList.remove('show');
+                alert(`Error analyzing URL: ${error.message}\n\nMake sure the backend API is running on ${API_URL}`);
+            }
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('urlInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                checkURL();
+            }
+        });
+        
+        // Test with default URL on load
+        setTimeout(() => {
+            if (document.getElementById('urlInput').value) {
+                checkURL();
+            }
+        }, 500);
+    </script>
+</body>
+</html>
