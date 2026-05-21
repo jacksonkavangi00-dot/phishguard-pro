@@ -1,11 +1,5 @@
-fastapi
-uvicorn
-scikit-learn
-pandas
-numpy
-scipy
-joblib
-python-whois
-requests
-python-multipart
-slowapi
+streamlit>=1.28.0
+requests>=2.31.0
+plotly>=5.17.0
+pandas>=2.0.0
+numpy>=1.24.0
